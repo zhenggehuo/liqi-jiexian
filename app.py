@@ -361,6 +361,69 @@ def main():
         box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
     }
     
+    /* ========== 超级生成按钮样式 ========== */
+    .super-generate-btn {
+        background: linear-gradient(135deg, #0066FF 0%, #0052CC 50%, #003380 100%);
+        color: #fff;
+        border: none;
+        padding: 1.2rem 2.5rem;
+        font-size: 1.3rem;
+        font-weight: 700;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 6px 25px rgba(0, 102, 255, 0.35);
+        text-align: center;
+        line-height: 1.4;
+    }
+    
+    .super-generate-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+        transition: 0.6s;
+    }
+    
+    .super-generate-btn:hover::before {
+        left: 100%;
+    }
+    
+    .super-generate-btn:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 10px 35px rgba(0, 102, 255, 0.5);
+    }
+    
+    .super-generate-btn:active {
+        transform: translateY(-1px) scale(0.98);
+    }
+    
+    /* 生成按钮容器 */
+    .generate-btn-container {
+        background: linear-gradient(135deg, #f8faff 0%, #e6f0ff 100%);
+        border: 2px solid #0066FF;
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+    }
+    
+    .generate-btn-wrapper {
+        text-align: center;
+    }
+    
+    .btn-hint {
+        color: #666;
+        font-size: 0.9rem;
+        margin-top: 0.8rem;
+        text-align: center;
+    }
+    
     /* 输出卡片样式 */
     .output-card {
         background: #f8f9fa;
@@ -486,9 +549,28 @@ def main():
             temperature = st.slider("🎨 创意度", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
             st.caption("💡 创意度越高，输出越离谱；建议保持在 0.7-0.9 之间")
         
-        # 生成按钮
-        st.markdown("---")
-        generate_button = st.button("🚀 发现隐藏联系", type="primary", use_container_width=True)
+        # ========== 超级生成按钮区域 ==========
+        st.markdown("""
+        <div class="generate-btn-container">
+            <p style="text-align: center; color: #0066FF; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;">
+                ✨ 准备就绪，等待你的话题 ✨
+            </p>
+            <div class="generate-btn-wrapper">
+                <button class="super-generate-btn" disabled>
+                    🚀 发现隐藏联系
+                </button>
+            </div>
+            <p class="btn-hint">输入两个话题后点击上方按钮开始生成</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 生成按钮（实际可点击的透明按钮覆盖在上面）
+        generate_button = st.button(
+            "　\n　🚀 **开始生成** - 发现隐藏联系\n　",
+            type="primary",
+            use_container_width=True,
+            key="super_generate_btn"
+        )
     
     with col2:
         st.markdown("### ✨ 生成结果")
