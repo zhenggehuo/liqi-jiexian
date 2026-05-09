@@ -6,75 +6,77 @@
 
 输入两个话题，AI帮你发现它们之间意想不到的奇妙联系。
 
-## 痛点说明
+## 快速部署到 Railway
 
-- **知识孤岛**：我们学到的知识往往是碎片化的，不知道它们之间有什么关联
-- **灵感枯竭**：创作者经常面临"这个话题能跟什么联系起来"的困境
-- **认知局限**：人类大脑很难跳出专业领域去发现跨学科的有趣联系
-- **传播壁垒**：好的知识内容需要有趣的包装，但找联系这件事本身就很难
+### 方式一：从 GitHub 部署（推荐）
 
-## 解决方案
+1. **准备 GitHub Token**
+   - 访问 https://github.com/settings/tokens
+   - 点击 "Generate new token (classic)"
+   - 选择权限：`repo` (完整仓库访问)
+   - 生成并保存 Token
 
-「万物连线」利用AI的跨领域联想能力，在知乎的庞大知识库中挖掘两个看似无关话题之间的隐藏联系，用"离谱小国"风格的知识叙事脚本输出，让知识发现变得有趣、有梗、有传播力。
+2. **创建 GitHub 仓库并推送**
+   ```bash
+   # 添加远程仓库（替换 YOUR_TOKEN 为你的 GitHub Token）
+   git remote add origin https://YOUR_TOKEN@github.com/YOUR_USERNAME/liqi-jiexian.git
+   
+   # 重命名分支为 main
+   git branch -M main
+   
+   # 推送代码
+   git push -u origin main
+   ```
 
-## 核心流程
+3. **Railway 部署**
+   - 访问 https://railway.app
+   - 使用 GitHub 登录
+   - 点击 "New Project" → "Deploy from GitHub repo"
+   - 选择 `liqi-jiexian` 仓库
+   - Railway 会自动检测 Nixpacks 配置
 
-```
-用户输入 Topic A          用户输入 Topic B
-       │                        │
-       └────────┬───────────────┘
-                ▼
-        ┌───────────────┐
-        │  知乎内容检索  │
-        │  + AI深度联想  │
-        └───────┬───────┘
-                ▼
-        ┌───────────────┐
-        │  发现隐藏联系  │
-        │  生成叙事脚本  │
-        └───────┬───────┘
-                ▼
-        ┌───────────────┐
-        │  "离谱小国"式  │
-        │  知识输出呈现  │
-        └───────────────┘
-```
+4. **配置环境变量**
+   - 在 Railway 项目设置中添加：
+     - `DEEPSEEK_API_KEY`: 你的 DeepSeek API Key
+     - `ZHIHU_API_KEY`: 知乎API Key（如需要）
 
-## Demo体验方式
+### 方式二：本地运行
 
-### 方式一：本地运行
 ```bash
-pip install streamlit
+# 克隆仓库
+git clone https://github.com/YOUR_USERNAME/liqi-jiexian.git
+cd liqi-jiexian
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 创建 .env 文件
+echo "DEEPSEEK_API_KEY=your_api_key" > .env
+
+# 运行
 streamlit run app.py
 ```
-
-### 方式二：在线体验
-（待部署后补充链接）
-
-## 使用示例
-
-输入任意两个知乎话题，例如：
-- **量子力学** + **泡茶** → 量子隧穿效应与茶叶舒展的惊人相似
-- **明朝** + **直播带货** → 郑和下西洋的商业逻辑与李佳琦的共同点
-- **抑郁症** + **黑洞** → 情感黑洞与宇宙黑洞的自我吞噬机制
 
 ## 项目结构
 
 ```
-离谱接线员/
-├── README.md           # 本文档
-├── app.py              # Streamlit应用入口
-└── prompts/
-    ├── connector.md    # 核心生成Prompt
-    └── examples.md     # 示例展示
+liqi-jiexian/
+├── app.py                 # Streamlit 主应用
+├── zhihu_api.py           # 知乎API封装
+├── prompts/               # AI Prompt模板
+│   ├── connector.md       # 核心连接生成器
+│   ├── examples.md        # 示例库
+│   └── demo_examples.md   # Demo示例
+├── requirements.txt       # Python依赖
+├── railway.json          # Railway配置
+├── nixpacks.toml         # Nixpacks配置
+├── .gitignore            # Git忽略文件
+└── README.md             # 本文件
 ```
 
 ## 技术栈
 
-- **前端**：Streamlit（快速原型）
-- **后端**：Python + DeepSeek API
-- **数据源**：知乎内容 + 盐选小说
-
----
-
-**「万物连线」—— 让知识发现成为一场惊喜连连的探险。**
+- **前端**: Streamlit
+- **AI**: DeepSeek API
+- **数据源**: 知乎API
+- **部署**: Railway + Nixpacks
