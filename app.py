@@ -495,6 +495,18 @@ def main():
             help="输入第二个话题"
         )
         
+        # 生成按钮 - 紧跟在话题输入下方
+        with st.expander("⚙️ 高级选项"):
+            temperature = st.slider("🎨 创意度", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
+            st.caption("💡 创意度越高，输出越离谱；建议保持在 0.7-0.9 之间")
+        
+        generate_button = st.button(
+            "🚀 发现隐藏联系",
+            type="primary",
+            use_container_width=True,
+            key="super_generate_btn"
+        )
+        
         # 今日热榜功能
         st.markdown("---")
         st.markdown("### 🔥 今日热榜")
@@ -544,33 +556,7 @@ def main():
                     topic_a = ex_a
                     topic_b = ex_b
         
-        # 高级选项（折叠）
-        with st.expander("⚙️ 高级选项"):
-            temperature = st.slider("🎨 创意度", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
-            st.caption("💡 创意度越高，输出越离谱；建议保持在 0.7-0.9 之间")
-        
-        # ========== 超级生成按钮区域 ==========
-        st.markdown("""
-        <div class="generate-btn-container">
-            <p style="text-align: center; color: #0066FF; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;">
-                ✨ 准备就绪，等待你的话题 ✨
-            </p>
-            <div class="generate-btn-wrapper">
-                <button class="super-generate-btn" disabled>
-                    🚀 发现隐藏联系
-                </button>
-            </div>
-            <p class="btn-hint">输入两个话题后点击上方按钮开始生成</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 生成按钮（实际可点击的透明按钮覆盖在上面）
-        generate_button = st.button(
-            "　\n　🚀 **开始生成** - 发现隐藏联系\n　",
-            type="primary",
-            use_container_width=True,
-            key="super_generate_btn"
-        )
+
     
     with col2:
         st.markdown("### ✨ 生成结果")
