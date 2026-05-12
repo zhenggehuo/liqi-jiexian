@@ -249,63 +249,63 @@ class ZhihuAPIClient:
     
     def get_hot_list(self, limit: int = 10) -> List[Dict]:
         """
-        获取知乎热榜 - 优先使用真实API
+        获取知乎热榜 - 优先使用真实API，失败时降级到mock数据
         
         Args:
             limit: 返回数量
         
         Returns:
-            List[Dict]: 热榜列表
+            List[Dict]: 热榜列表，永远不会返回None
         """
-        cache_key = f"hot_list_{limit}"
-        cached = _cache.get(cache_key)
-        if cached is not None:
-            return cached
-        
-        hot_list = None
-        
-        # 方案1: 尝试知乎开放平台API
-        if self._check_api_availability():
-            try:
-                headers = self._get_auth_headers()
-                response = self.session.get(
-                    f"{ZHIHU_HOT_API}/total",
-                    headers=headers,
-                    params={"limit": limit},
-                    timeout=15
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    hot_list = self._parse_hot_list_response(data, limit)
-                    if hot_list:
-                        _cache.set(cache_key, hot_list)
-                        print(f"✅ 使用知乎开放平台API获取热榜")
-                        return hot_list
-            except Exception as e:
-                print(f"⚠️ 知乎开放平台热榜API失败: {e}")
-        
-        # 方案2: 使用公开热榜API
         try:
-            response = self.session.get(
-                ZHIHU_PUBLIC_HOT,
-                params={"limit": limit, "desktop": True},
-                timeout=15
-            )
-            if response.status_code == 200:
-                data = response.json()
-                hot_list = self._parse_public_hot_response(data, limit)
-                if hot_list:
-                    _cache.set(cache_key, hot_list)
-                    print(f"✅ 使用知乎公开API获取热榜")
-                    return hot_list
+            cache_key = f"hot_list_{limit}"
+            cached = _cache.get(cache_key)
+            if cached is not None and isinstance(cached, list):
+                return cached
+            
+            hot_list = []
+            
+            # 方案1: 尝试知乎开放平台API
+            if self._check_api_availability():
+                try:
+                    headers = self._get_auth_headers()
+                    response = self.session.get(
+                        f"{ZHIHU_HOT_API}/total",
+                        headers=headers,
+                        params={"limit": limit},
+                        timeout=15
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        hot_list = self._parse_hot_list_response(data, limit)
+                except Exception as e:
+                    print(f"⚠️ 知乎开放平台热榜API失败: {e}")
+            
+            # 方案2: 使用公开热榜API
+            if not hot_list:
+                try:
+                    response = self.session.get(
+                        ZHIHU_PUBLIC_HOT,
+                        params={"limit": limit, "desktop": True},
+                        timeout=15
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        hot_list = self._parse_public_hot_response(data, limit)
+                except Exception as e:
+                    print(f"⚠️ 知乎公开热榜API失败: {e}")
+            
+            # 确保返回列表（降级到模拟数据）
+            if not isinstance(hot_list, list) or not hot_list:
+                hot_list = self._generate_mock_hot_list(limit)
+            
+            _cache.set(cache_key, hot_list)
+            return hot_list
+            
         except Exception as e:
-            print(f"⚠️ 知乎公开热榜API失败: {e}")
-        
-        # 方案3: 降级到模拟数据
-        hot_list = self._generate_mock_hot_list(limit)
-        _cache.set(cache_key, hot_list)
-        print(f"ℹ️ 热榜使用模拟数据")
-        return hot_list
+            print(f"❌ get_hot_list异常: {e}")
+            # 永远返回mock数据，不让应用崩溃
+            return self._generate_mock_hot_list(limit)
     
     def _parse_hot_list_response(self, data: Dict, limit: int) -> List[Dict]:
         """解析知乎开放平台热榜响应"""

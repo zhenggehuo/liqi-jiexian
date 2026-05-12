@@ -21,7 +21,7 @@ import time
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from zhihu_api import ZhihuAPIClient, get_cache_stats, clear_cache
+from zhihu_api import ZhihuAPIClient, ZhihuContentSimulator, get_cache_stats, clear_cache
 
 # =============================================================================
 # 配置
@@ -720,20 +720,43 @@ def main():
         
         if st.button("📊 加载热榜话题", use_container_width=True):
             with st.spinner("加载中..."):
-                hot_list = zhihu_client.get_hot_list(limit=8)
+                try:
+                    hot_list = zhihu_client.get_hot_list(limit=8)
+                    # 确保是列表，防止API返回异常数据
+                    if not isinstance(hot_list, list):
+                        hot_list = []
+                except Exception as e:
+                    st.error(f"加载热榜失败: {e}")
+                    # 使用mock数据降级
+                    hot_list = [
+                        {"rank": i, "title": title}
+                        for i, title in enumerate([
+                            "AI大模型如何改变内容创作？",
+                            "年轻人为什么开始拒绝无效社交？",
+                            "量子计算的实际应用有多远？",
+                            "普通人如何抓住经济转型红利？",
+                            "独立思考是未来最稀缺能力？",
+                            "下一个十年的风口在哪里？"
+                        ], 1)
+                    ]
             
-            st.markdown("**点击快速填入：**")
-            hot_cols = st.columns(2)
-            for i, item in enumerate(hot_list[:6]):
-                with hot_cols[i % 2]:
-                    if st.button(f"#{item['rank']} {item['title'][:15]}...", 
-                                key=f"hot_{item['rank']}", use_container_width=True):
-                        if not st.session_state.current_topics[0]:
-                            topic_a = item['title']
-                        else:
-                            topic_b = item['title']
-                        st.session_state.current_topics = (topic_a, topic_b)
-                        st.rerun()
+            if hot_list:
+                st.markdown("**点击快速填入：**")
+                hot_cols = st.columns(2)
+                for i, item in enumerate(hot_list[:6]):
+                    title = item.get('title', '未知话题')[:15] if isinstance(item, dict) else str(item)[:15]
+                    rank = item.get('rank', i+1) if isinstance(item, dict) else i+1
+                    with hot_cols[i % 2]:
+                        if st.button(f"#{rank} {title}...", 
+                                    key=f"hot_{rank}", use_container_width=True):
+                            if not st.session_state.current_topics[0]:
+                                topic_a = item.get('title', '') if isinstance(item, dict) else str(item)
+                            else:
+                                topic_b = item.get('title', '') if isinstance(item, dict) else str(item)
+                            st.session_state.current_topics = (topic_a, topic_b)
+                            st.rerun()
+            else:
+                st.info("暂无可用热榜话题，请手动输入")
         
         st.markdown("---")
         st.markdown("### 💡 快速体验")
@@ -794,8 +817,18 @@ def main():
                 st.session_state.connection_history.append((topic_a, topic_b, datetime.now().strftime("%H:%M")))
                 
                 with st.spinner("🔍 正在搜索知乎相关内容..."):
-                    display_data = zhihu_client.format_for_display(topic_a, topic_b)
-                    zhihu_context_str = zhihu_client.format_for_ai(topic_a, topic_b)
+                    try:
+                        display_data = zhihu_client.format_for_display(topic_a, topic_b)
+                        zhihu_context_str = zhihu_client.format_for_ai(topic_a, topic_b)
+                    except Exception as e:
+                        st.warning(f"知乎数据获取失败，使用模拟数据: {e}")
+                        # 降级到模拟数据
+                        display_data = {
+                            "topic_a": ZhihuContentSimulator.generate_topic_context(topic_a),
+                            "topic_b": ZhihuContentSimulator.generate_topic_context(topic_b),
+                            "fetch_time": datetime.now().isoformat(),
+                        }
+                        zhihu_context_str = ZhihuContentSimulator.format_context_for_ai(display_data["topic_a"]) + "\n\n" + ZhihuContentSimulator.format_context_for_ai(display_data["topic_b"])
                 
                 st.session_state.zhihu_context = display_data
                 
