@@ -4,6 +4,8 @@
 核心功能：用户输入两个看似无关的知乎话题，AI在知乎内容库中找它们的隐藏联系，
 用"离谱小国"风格输出知识叙事脚本。
 
+升级说明：接入知乎搜索和话题API，让接线结果基于真实内容，提升产品说服力。
+
 作者：Hackathon Team
 日期：2026年
 """
@@ -14,7 +16,7 @@ import re
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from zhihu_api import ZhihuAPIClient
+from zhihu_api import ZhihuAPIClient, get_cache_stats, clear_cache
 
 # =============================================================================
 # 配置区域
@@ -27,7 +29,7 @@ load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
-# Prompt文件路径（支持相对路径和绝对路径）
+# Prompt文件路径
 PROMPT_FILE_PATH = os.path.join(os.path.dirname(__file__), "prompts", "connector.md")
 
 
@@ -36,12 +38,7 @@ PROMPT_FILE_PATH = os.path.join(os.path.dirname(__file__), "prompts", "connector
 # =============================================================================
 
 def load_prompt_template() -> str:
-    """
-    加载核心Prompt模板
-    
-    Returns:
-        str: prompt模板内容
-    """
+    """加载核心Prompt模板"""
     try:
         with open(PROMPT_FILE_PATH, "r", encoding="utf-8") as f:
             return f.read()
@@ -50,7 +47,8 @@ def load_prompt_template() -> str:
         return ""
 
 
-def build_user_prompt(topic_a: str, topic_b: str, prompt_template: str) -> str:
+def build_user_prompt(topic_a: str, topic_b: str, prompt_template: str, 
+                      zhihu_context: str = "") -> str:
     """
     构建用户请求的完整prompt
     
@@ -58,15 +56,31 @@ def build_user_prompt(topic_a: str, topic_b: str, prompt_template: str) -> str:
         topic_a: 第一个话题
         topic_b: 第二个话题
         prompt_template: prompt模板
+        zhihu_context: 知乎内容上下文
     
     Returns:
         str: 完整的用户prompt
     """
+    # 如果有知乎内容上下文，将其加入prompt
+    if zhihu_context:
+        context_section = f"""
+{'='*60}
+【以下是来自知乎的真实内容，请基于这些内容发现话题之间的联系】
+{'='*60}
+{zhihu_context}
+
+{'='*60}
+请根据以上知乎真实内容，发现话题A和话题B之间的隐藏联系。
+{'='*60}
+"""
+    else:
+        context_section = ""
+    
     user_prompt = f"""请发现以下两个话题之间的隐藏联系，并用"离谱小国"风格生成知识叙事脚本：
 
 话题A：{topic_a}
 话题B：{topic_b}
-
+{context_section}
 请严格按照以下格式输出：
 1. 【脚本标题】
 2. 【开场Hook】2-3句话，制造认知冲突
@@ -78,13 +92,15 @@ def build_user_prompt(topic_a: str, topic_b: str, prompt_template: str) -> str:
     return user_prompt
 
 
-def call_deepseek_api(topic_a: str, topic_b: str, temperature: float = 0.8) -> tuple[bool, str]:
+def call_deepseek_api(topic_a: str, topic_b: str, zhihu_context: str = "",
+                       temperature: float = 0.8) -> tuple[bool, str]:
     """
     调用DeepSeek API生成内容
     
     Args:
         topic_a: 第一个话题
         topic_b: 第二个话题
+        zhihu_context: 知乎内容上下文
         temperature: 创意度参数（0.1-1.0）
     
     Returns:
@@ -104,7 +120,7 @@ def call_deepseek_api(topic_a: str, topic_b: str, temperature: float = 0.8) -> t
             return False, "❌ 无法加载Prompt模板"
         
         # 构建完整 prompt
-        full_prompt = build_user_prompt(topic_a, topic_b, prompt_template)
+        full_prompt = build_user_prompt(topic_a, topic_b, prompt_template, zhihu_context)
         
         # 调用 DeepSeek API
         headers = {
@@ -117,7 +133,7 @@ def call_deepseek_api(topic_a: str, topic_b: str, temperature: float = 0.8) -> t
             "messages": [
                 {
                     "role": "system", 
-                    "content": "你是一位顶尖的「知识接线员」，擅长发现万事万物之间看似不可能、实则精妙的隐藏联系，用'离谱小国'风格讲述知识故事。"
+                    "content": "你是一位顶尖的「知识接线员」，擅长发现万事万物之间看似不可能、实则精妙的隐藏联系，用'离谱小国'风格讲述知识故事。你基于知乎真实内容来发现联系，让每一句话都有据可查。"
                 },
                 {
                     "role": "user", 
@@ -125,11 +141,11 @@ def call_deepseek_api(topic_a: str, topic_b: str, temperature: float = 0.8) -> t
                 }
             ],
             "temperature": temperature,
-            "max_tokens": 2000,
+            "max_tokens": 2500,
             "stream": False
         }
         
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=60)
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=90)
         
         # 检查响应状态
         if response.status_code != 200:
@@ -153,16 +169,7 @@ def call_deepseek_api(topic_a: str, topic_b: str, temperature: float = 0.8) -> t
 
 
 def validate_input(topic_a: str, topic_b: str) -> tuple[bool, str]:
-    """
-    验证用户输入的有效性
-    
-    Args:
-        topic_a: 第一个话题
-        topic_b: 第二个话题
-    
-    Returns:
-        tuple: (是否有效, 错误信息)
-    """
+    """验证用户输入的有效性"""
     if not topic_a or not topic_b:
         return False, "请输入两个话题"
     
@@ -175,8 +182,39 @@ def validate_input(topic_a: str, topic_b: str) -> tuple[bool, str]:
     return True, ""
 
 
+def format_source_citation(topic_data: dict, topic_name: str) -> str:
+    """
+    格式化知乎内容来源展示
+    
+    Args:
+        topic_data: 话题数据
+        topic_name: 话题名称
+    
+    Returns:
+        str: 格式化的来源信息
+    """
+    info = topic_data.get("info", {})
+    questions = topic_data.get("questions", [])
+    
+    lines = [
+        f"**📊 {topic_name} 话题数据**",
+        f"- 关注者：{info.get('followers_count', 0):,}",
+        f"- 问题数：{info.get('questions_count', 0):,}",
+    ]
+    
+    if questions:
+        lines.append(f"\n**🔍 相关讨论：**")
+        for i, q in enumerate(questions[:3], 1):
+            ans = q.get("top_answer")
+            lines.append(f"{i}. **{q['title']}**")
+            if ans:
+                lines.append(f"   💬 热评 {ans['voteup_count']}👍 | {ans['excerpt'][:60]}...")
+    
+    return "\n".join(lines)
+
+
 # =============================================================================
-# 预设示例脚本（演示用）
+# 预设示例脚本
 # =============================================================================
 
 EXAMPLE_SCRIPTS = {
@@ -451,17 +489,59 @@ def main():
         font-size: 1.1rem;
         padding: 2rem;
     }
+    
+    /* 知乎来源卡片样式 */
+    .zhihu-source-card {
+        background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);
+        border: 1px solid #d0e3ff;
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 0.8rem 0;
+    }
+    
+    /* 话题信息样式 */
+    .topic-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.8rem;
+        margin: 0.5rem 0;
+    }
+    
+    /* 进度条容器 */
+    .progress-container {
+        background: #e9ecef;
+        border-radius: 10px;
+        padding: 3px;
+        margin: 1rem 0;
+    }
+    
+    /* 成功提示 */
+    .success-box {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* 知乎logo颜色 */
+    .zhihu-badge {
+        background: linear-gradient(135deg, #0066FF 0%, #0052CC 100%);
+        color: white;
+        padding: 0.2rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
     </style>
     """, unsafe_allow_html=True)
     
     # 标题区域
     st.markdown('<h1 class="main-title">🔗 离谱接线员</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">输入两个话题，发现意想不到的联系</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">基于知乎真实内容，发现话题之间的隐藏联系</p>', unsafe_allow_html=True)
     
     # API Key 状态检查
-    api_status = ""
     if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "你的API密钥":
-        api_status = "⚠️ API未配置"
         st.warning("🔑 请在 `.env` 文件中配置 DeepSeek API Key，否则将使用演示模式")
     
     # 初始化知乎API客户端
@@ -472,13 +552,17 @@ def main():
         st.session_state.generated_script = None
     if "current_topics" not in st.session_state:
         st.session_state.current_topics = ("", "")
+    if "zhihu_context" not in st.session_state:
+        st.session_state.zhihu_context = {}
+    if "is_fetching" not in st.session_state:
+        st.session_state.is_fetching = False
     
     # 主内容区域 - 分为左右两栏
-    col1, col2 = st.columns([1, 1], gap="large")
+    col1, col2 = st.columns([1, 1.2], gap="large")
     
     with col1:
         st.markdown("### 📝 输入话题")
-        st.markdown("输入两个看似无关的话题，AI帮你发现它们之间的隐藏联系")
+        st.markdown("输入两个看似无关的话题，AI基于知乎真实内容帮你发现它们之间的隐藏联系")
         
         # 话题输入框
         topic_a = st.text_input(
@@ -499,7 +583,14 @@ def main():
         with st.expander("⚙️ 高级选项"):
             temperature = st.slider("🎨 创意度", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
             st.caption("💡 创意度越高，输出越离谱；建议保持在 0.7-0.9 之间")
+            
+            # 清除缓存按钮
+            if st.button("🗑️ 清除内容缓存"):
+                clear_cache()
+                st.cache_data.clear()
+                st.success("缓存已清除")
         
+        # 主生成按钮
         generate_button = st.button(
             "🚀 发现隐藏联系",
             type="primary",
@@ -530,7 +621,6 @@ def main():
             for i, item in enumerate(hot_list[:8]):
                 with hot_cols[i % 2]:
                     if st.button(f"#{item['rank']} {item['title']}", key=f"hot_{item['rank']}", use_container_width=True):
-                        # 轮流填入话题A或话题B
                         if not st.session_state.current_topics[0]:
                             topic_a = item['title']
                             st.session_state.current_topics = (topic_a, st.session_state.current_topics[1])
@@ -555,7 +645,7 @@ def main():
                 if st.button(f"{ex_a}\n+ {ex_b}", key=f"example_{i}", use_container_width=True):
                     topic_a = ex_a
                     topic_b = ex_b
-        
+
 
     
     with col2:
@@ -570,18 +660,69 @@ def main():
             else:
                 # 保存当前话题
                 st.session_state.current_topics = (topic_a, topic_b)
+                st.session_state.is_fetching = True
                 
-                # 显示加载状态
-                with st.spinner("🔍 AI正在发现隐藏联系，请稍候..."):
-                    # 调用 DeepSeek API
-                    success, result = call_deepseek_api(topic_a, topic_b, temperature)
+                # ========== 第一步：获取知乎内容 ==========
+                with st.spinner("🔍 正在搜索知乎相关内容..."):
+                    # 获取话题上下文
+                    display_data = zhihu_client.format_for_display(topic_a, topic_b)
+                    zhihu_context_str = zhihu_client.format_for_ai(topic_a, topic_b)
+                
+                st.session_state.zhihu_context = display_data
+                
+                # ========== 显示知乎内容来源 ==========
+                st.markdown("""
+                <div class="success-box">
+                    <strong>✅ 已从知乎获取相关内容</strong>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 话题信息卡片
+                st.markdown("#### 📊 话题数据来源")
+                
+                # 两个话题并排显示
+                info_col1, info_col2 = st.columns(2)
+                
+                with info_col1:
+                    st.markdown(f"**📌 {topic_a}**")
+                    info_a = display_data["topic_a"]["info"]
+                    st.metric("关注者", f"{info_a.get('followers_count', 0):,}")
+                    st.metric("相关问题", f"{len(display_data['topic_a']['questions'])}")
+                    
+                    # 显示相关问题摘要
+                    with st.expander("查看相关讨论", expanded=False):
+                        for q in display_data["topic_a"]["questions"][:2]:
+                            st.markdown(f"- {q['title']}")
+                            if q.get("top_answer"):
+                                st.caption(f"  💬 {q['top_answer']['voteup_count']}赞同 · {q['top_answer']['excerpt'][:50]}...")
+                
+                with info_col2:
+                    st.markdown(f"**📌 {topic_b}**")
+                    info_b = display_data["topic_b"]["info"]
+                    st.metric("关注者", f"{info_b.get('followers_count', 0):,}")
+                    st.metric("相关问题", f"{len(display_data['topic_b']['questions'])}")
+                    
+                    with st.expander("查看相关讨论", expanded=False):
+                        for q in display_data["topic_b"]["questions"][:2]:
+                            st.markdown(f"- {q['title']}")
+                            if q.get("top_answer"):
+                                st.caption(f"  💬 {q['top_answer']['voteup_count']}赞同 · {q['top_answer']['excerpt'][:50]}...")
+                
+                st.markdown(f"<small>🕐 数据获取时间：{display_data['fetch_time']}</small>", unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # ========== 第二步：调用AI生成脚本 ==========
+                with st.spinner("🤖 AI正在分析话题联系，请稍候..."):
+                    success, result = call_deepseek_api(
+                        topic_a, topic_b, zhihu_context_str, temperature
+                    )
                     
                     if success:
-                        # 保存到session
                         st.session_state.generated_script = result
+                        st.session_state.is_fetching = False
                         
-                        # 显示结果
-                        st.success("✅ 发现隐藏联系成功！")
+                        st.success("✨ 发现隐藏联系成功！")
                         st.markdown(result)
                         
                         # 下载按钮
@@ -592,11 +733,12 @@ def main():
                             mime="text/markdown",
                             use_container_width=True
                         )
-                    else:
-                        # API 调用失败，显示错误信息
-                        st.error(result)
                         
-                        # 如果用户想看效果，提供演示示例
+                        # 显示来源说明
+                        st.info("💡 本脚本基于知乎真实讨论内容生成，点击上方按钮可下载完整Markdown文件")
+                    else:
+                        st.session_state.is_fetching = False
+                        st.error(result)
                         st.info("💡 你可以点击左侧的【快速示例】按钮查看预设效果")
         
         # 显示历史结果
@@ -609,6 +751,17 @@ def main():
                 mime="text/markdown",
                 use_container_width=True
             )
+            
+            # 如果有知乎上下文数据，也显示
+            if st.session_state.zhihu_context:
+                with st.expander("📋 查看知乎内容来源", expanded=False):
+                    ctx = st.session_state.zhihu_context
+                    st.markdown(f"**话题A：{ctx['topic_a']['name']}**")
+                    for q in ctx["topic_a"]["questions"][:2]:
+                        st.markdown(f"- {q['title']}")
+                    st.markdown(f"**话题B：{ctx['topic_b']['name']}**")
+                    for q in ctx["topic_b"]["questions"][:2]:
+                        st.markdown(f"- {q['title']}")
         else:
             # 空状态提示
             st.info("👆 在左侧输入两个话题，点击按钮开始发现隐藏联系")
@@ -632,7 +785,7 @@ def main():
         """
         <div style="text-align: center; color: #999; font-size: 0.9rem;">
             <p>🔗 离谱接线员 | 知乎 Hackathon 2026「灵感引擎」赛道</p>
-            <p>Powered by DeepSeek API | 发现知识之间的隐藏联系</p>
+            <p>Powered by DeepSeek API + 知乎内容API | 发现知识之间的隐藏联系</p>
         </div>
         """,
         unsafe_allow_html=True
