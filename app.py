@@ -649,7 +649,7 @@ def main():
     init_oauth_session_state(st)
     
     # 处理OAuth回调
-    handle_oauth_callback(st)
+    oauth_success = handle_oauth_callback(st)
     
     # ==========================================================================
     # 侧边栏
