@@ -648,8 +648,19 @@ def main():
     # ==========================================================================
     init_oauth_session_state(st)
     
+    # 调试：显示URL参数
+    _debug_params = dict(st.query_params) if st.query_params else {}
+    if _debug_params:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🔍 调试信息")
+        st.sidebar.json(_debug_params)
+    
     # 处理OAuth回调
     oauth_success = handle_oauth_callback(st)
+    
+    # 调试：显示登录错误
+    if st.session_state.get("zhihu_login_error"):
+        st.sidebar.error(f"OAuth错误: {st.session_state.zhihu_login_error}")
     
     # ==========================================================================
     # 侧边栏
