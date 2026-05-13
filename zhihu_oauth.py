@@ -99,28 +99,18 @@ class ZhihuOAuth:
             ZhihuOAuthError: 换取token失败
         """
         try:
-            req_data = {
-                "app_id": self.app_id,
-                "app_key": self.app_key,
-                "grant_type": "authorization_code",
-                "redirect_uri": self.redirect_uri,
-                "code": code,
-            }
-            # 调试：把请求参数记录下来（隐藏app_key）
-            _debug_data = {**req_data, "app_key": req_data["app_key"][:6] + "***"}
-            import sys
-            print(f"[DEBUG exchange_token] request data: {_debug_data}", file=sys.stderr)
-            
             response = requests.post(
                 f"{ZHIHU_OAUTH_BASE_URL}/access_token",
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data=req_data,
+                data={
+                    "app_id": self.app_id,
+                    "app_key": self.app_key,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": self.redirect_uri,
+                    "code": code,
+                },
                 timeout=30
             )
-            
-            # 调试：打印响应
-            print(f"[DEBUG exchange_token] status: {response.status_code}", file=sys.stderr)
-            print(f"[DEBUG exchange_token] body: {response.text[:500]}", file=sys.stderr)
             
             # 尝试解析JSON响应
             try:
