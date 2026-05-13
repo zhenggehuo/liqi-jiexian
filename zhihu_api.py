@@ -353,17 +353,18 @@ class ZhihuAPIClient:
     
     def _generate_mock_hot_list(self, limit: int = 10) -> List[Dict]:
         """生成模拟热榜（当真实API不可用时）"""
+        # 使用更真实的热榜话题格式
         mock_titles = [
-            "AI大模型如何重塑内容创作行业？",
-            "年轻人为什么开始拒绝无效社交？",
-            "量子计算的实际应用还有多远？",
-            "普通人如何抓住这波经济转型红利？",
-            "为什么说独立思考是未来最稀缺的能力？",
-            "下一个十年的风口在哪里？",
-            "如何培养真正的解决问题的能力？",
-            "AI时代还需要学编程吗？",
-            "为什么越努力越焦虑？",
-            "未来什么样的技能最值钱？"
+            "DeepSeek发布新模型对AI行业格局的影响",
+            "年轻人为什么开始迷上玄学？",
+            "为什么说2024是AI应用元年",
+            "特斯拉FSD进入中国意味着什么",
+            "拼多多市值超越阿里说明了什么",
+            "为什么现在年轻人不愿意卷了",
+            "新能源车渗透率超过50%意味着什么",
+            "人口负增长对普通人意味着什么",
+            "为什么大厂纷纷开始降本增效",
+            "ChatGPT对教育行业的影响有多大"
         ]
         
         return [
@@ -372,9 +373,9 @@ class ZhihuAPIClient:
                 "title": mock_titles[i % len(mock_titles)],
                 "url": f"https://www.zhihu.com/question/{10000000 + i}",
                 "id": str(10000000 + i),
-                "hot_value": f"{50000 - i * 3000}+",
-                "excerpt": "这是一个值得深入探讨的话题...",
-                "answer_count": random.randint(50, 500),
+                "hot_value": "",  # mock数据没有热度值
+                "excerpt": "相关讨论正在进行中...",
+                "answer_count": random.randint(100, 2000),
             }
             for i in range(min(limit, len(mock_titles)))
         ]

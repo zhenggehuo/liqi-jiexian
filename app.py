@@ -718,45 +718,93 @@ def main():
         st.markdown("---")
         st.markdown("### 🔥 今日知乎热榜")
         
-        if st.button("📊 加载热榜话题", use_container_width=True):
-            with st.spinner("加载中..."):
+        # ==========================================================================
+        # 热榜自动加载（使用session_state缓存，5分钟自动刷新）
+        # ==========================================================================
+        HOT_CACHE_TTL = 300  # 5分钟缓存
+        
+        # 初始化热榜相关session_state
+        if "hot_list" not in st.session_state:
+            st.session_state.hot_list = []
+        if "hot_list_fetch_time" not in st.session_state:
+            st.session_state.hot_list_fetch_time = None
+        if "hot_list_source" not in st.session_state:
+            st.session_state.hot_list_source = None  # "real" 或 "mock"
+        
+        # 检查是否需要刷新（缓存过期或首次加载）
+        need_refresh = False
+        if not st.session_state.hot_list:
+            need_refresh = True
+        elif st.session_state.hot_list_fetch_time:
+            elapsed = time.time() - st.session_state.hot_list_fetch_time
+            if elapsed > HOT_CACHE_TTL:
+                need_refresh = True
+        
+        # 自动加载热榜数据
+        if need_refresh:
+            with st.spinner("📡 加载知乎热榜..."):
                 try:
-                    hot_list = zhihu_client.get_hot_list(limit=8)
-                    # 确保是列表，防止API返回异常数据
-                    if not isinstance(hot_list, list):
-                        hot_list = []
+                    hot_result = zhihu_client.get_hot_list(limit=8)
+                    
+                    # 确保是列表
+                    if isinstance(hot_result, list) and hot_result:
+                        st.session_state.hot_list = hot_result
+                        st.session_state.hot_list_fetch_time = time.time()
+                        # 判断数据来源：通过hot_value是否包含"+"来判断（mock数据用50000+格式）
+                        first_hot_value = hot_result[0].get('hot_value', '') if isinstance(hot_result[0], dict) else ''
+                        st.session_state.hot_list_source = "real" if first_hot_value and not first_hot_value.endswith("+") else "mock"
+                    else:
+                        st.session_state.hot_list = []
+                        st.session_state.hot_list_source = "mock"
                 except Exception as e:
-                    st.error(f"加载热榜失败: {e}")
-                    # 使用mock数据降级
-                    hot_list = [
-                        {"rank": i, "title": title}
-                        for i, title in enumerate([
-                            "AI大模型如何改变内容创作？",
-                            "年轻人为什么开始拒绝无效社交？",
-                            "量子计算的实际应用有多远？",
-                            "普通人如何抓住经济转型红利？",
-                            "独立思考是未来最稀缺能力？",
-                            "下一个十年的风口在哪里？"
-                        ], 1)
-                    ]
-            
-            if hot_list:
-                st.markdown("**点击快速填入：**")
-                hot_cols = st.columns(2)
-                for i, item in enumerate(hot_list[:6]):
-                    title = item.get('title', '未知话题')[:15] if isinstance(item, dict) else str(item)[:15]
-                    rank = item.get('rank', i+1) if isinstance(item, dict) else i+1
-                    with hot_cols[i % 2]:
-                        if st.button(f"#{rank} {title}...", 
-                                    key=f"hot_{rank}", use_container_width=True):
-                            if not st.session_state.current_topics[0]:
-                                topic_a = item.get('title', '') if isinstance(item, dict) else str(item)
-                            else:
-                                topic_b = item.get('title', '') if isinstance(item, dict) else str(item)
-                            st.session_state.current_topics = (topic_a, topic_b)
-                            st.rerun()
-            else:
-                st.info("暂无可用热榜话题，请手动输入")
+                    # 静默降级到mock数据
+                    st.session_state.hot_list = zhihu_client._generate_mock_hot_list(8)
+                    st.session_state.hot_list_source = "mock"
+                    st.session_state.hot_list_fetch_time = time.time()
+        
+        # 显示数据来源和时间
+        source_label = "🔴 实时" if st.session_state.hot_list_source == "real" else "🟡 示例数据"
+        if st.session_state.hot_list_fetch_time:
+            fetch_time = datetime.fromtimestamp(st.session_state.hot_list_fetch_time).strftime("%H:%M")
+            time_hint = f"更新于 {fetch_time}"
+        else:
+            time_hint = ""
+        
+        col_source, col_refresh = st.columns([3, 1])
+        with col_source:
+            if st.session_state.hot_list:
+                st.caption(f"{source_label} · {time_hint}" if time_hint else source_label)
+        with col_refresh:
+            if st.button("🔄", key="refresh_hot", use_container_width=True):
+                st.session_state.hot_list = []
+                st.session_state.hot_list_fetch_time = None
+                st.rerun()
+        
+        # 显示热榜列表
+        if st.session_state.hot_list:
+            st.markdown("**点击快速填入：**")
+            hot_cols = st.columns(2)
+            for i, item in enumerate(st.session_state.hot_list[:6]):
+                title = item.get('title', '未知话题')[:18] if isinstance(item, dict) else str(item)[:18]
+                rank = item.get('rank', i+1) if isinstance(item, dict) else i+1
+                hot_value = item.get('hot_value', '') if isinstance(item, dict) else ''
+                
+                # 构建按钮标签
+                label = f"#{rank} {title}..."
+                if hot_value:
+                    label += f"\n{hot_value}"
+                
+                with hot_cols[i % 2]:
+                    if st.button(label, key=f"hot_{rank}", use_container_width=True):
+                        item_title = item.get('title', '') if isinstance(item, dict) else str(item)
+                        if not st.session_state.current_topics[0]:
+                            topic_a = item_title
+                        else:
+                            topic_b = item_title
+                        st.session_state.current_topics = (topic_a, topic_b)
+                        st.rerun()
+        else:
+            st.info("暂无热榜数据，请手动输入话题")
         
         st.markdown("---")
         st.markdown("### 💡 快速体验")
