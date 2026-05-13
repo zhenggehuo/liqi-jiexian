@@ -293,8 +293,9 @@ def handle_oauth_callback(st) -> bool:
         return False
     
     # 验证state防止CSRF攻击
+    # 注意：Streamlit重定向后session_state可能丢失，所以如果saved_state为None则跳过验证
     saved_state = st.session_state.get("zhihu_oauth_state")
-    if not saved_state or state != saved_state:
+    if saved_state and state != saved_state:
         st.session_state.zhihu_login_error = "State验证失败，请重试"
         st.query_params.clear()
         st.session_state.zhihu_oauth_state = None

@@ -722,10 +722,9 @@ def main():
                 <div style="color: rgba(255,255,255,0.9); font-size: 0.75rem; margin-top: 0.3rem;">
                     登录后可参与人气奖评选
                 </div>
+                <a href="{auth_url}" target="_blank" style="display:block; margin-top:0.8rem; background: white; color: #0066FF; text-align:center; padding: 0.6rem 1.5rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; text-decoration: none;">🔗 知乎登录</a>
             </div>
             """, unsafe_allow_html=True)
-            
-            st.markdown(f'<a href="{auth_url}" target="_self"><button style="width: 100%; background: #0066FF; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer;">🔗 知乎登录</button></a>', unsafe_allow_html=True)
             
             # 显示登录错误信息
             if st.session_state.zhihu_login_error:
