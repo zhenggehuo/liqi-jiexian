@@ -705,9 +705,9 @@ def main():
         st.markdown("输入两个看似无关的话题，AI帮你发现它们之间的隐藏联系")
         
         topic_a = st.text_input("话题 A", value=st.session_state.current_topics[0], 
-                                placeholder="例如：量子力学", key="topic_a_input")
+                                placeholder="例如：量子力学")
         topic_b = st.text_input("话题 B", value=st.session_state.current_topics[1], 
-                                placeholder="例如：泡茶", key="topic_b_input")
+                                placeholder="例如：泡茶")
         
         with st.expander("⚙️ 高级选项"):
             temperature = st.slider("🎨 创意度", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
@@ -803,10 +803,8 @@ def main():
                         else:
                             topic_a = st.session_state.current_topics[0]
                             topic_b = item_title
-                        # 同步更新current_topics和text_input的widget state
+                        # 更新current_topics，rerun后text_input会读取新值
                         st.session_state.current_topics = (topic_a, topic_b)
-                        st.session_state.topic_a_input = topic_a
-                        st.session_state.topic_b_input = topic_b
                         st.rerun()
         else:
             st.info("暂无热榜数据，请手动输入话题")
@@ -834,9 +832,6 @@ def main():
             
             st.session_state.generated_script = data["script"]
             st.session_state.current_topics = (data["topic_a"], data["topic_b"])
-            # 同步更新text_input的widget state
-            st.session_state.topic_a_input = data["topic_a"]
-            st.session_state.topic_b_input = data["topic_b"]
             
             st.markdown(f"""
             <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); 
