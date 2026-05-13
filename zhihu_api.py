@@ -214,8 +214,9 @@ class ZhihuAPIClient:
     
     def _check_api_availability(self) -> bool:
         """检查API是否可用（使用热榜API检测）"""
-        if self._api_status is not None:
-            return self._api_status
+        # 只缓存成功状态，失败时允许重试
+        if self._api_status is True:
+            return True
         
         try:
             # 使用热榜API做检测（Limit=1即可）
