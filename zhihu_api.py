@@ -26,13 +26,8 @@ import os
 # 知乎开放平台API Key（优先从环境变量读取）
 ZHIHU_API_KEY = os.getenv("ZHIHU_API_KEY", "6gB7oguakanBSRXLT9alTXSlfkziabXs")
 
-# 知乎开放平台API端点
-ZHIHU_API_BASE = "https://api.zhihu.com"
-ZHIHU_HOT_API = f"{ZHIHU_API_BASE}/topstory/hot-lists"
-ZHIHU_SEARCH_API = f"{ZHIHU_API_BASE}/search_v3"
-
-# 知乎热榜API（无需认证的公开接口）
-ZHIHU_PUBLIC_HOT = "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total"
+# 知乎开放平台API端点（正确的热榜API）
+ZHIHU_DEVELOPER_API = "https://developer.zhihu.com/api/v1/content/hot_list"
 
 # 缓存配置
 DEFAULT_CACHE_TTL = 300  # 5分钟
@@ -182,9 +177,8 @@ class ZhihuAPIClient:
     知乎API客户端
     
     优先使用真实API：
-    1. 热榜数据 - 使用公开API + 开放平台API
-    2. 话题数据 - 使用开放平台API
-    3. 搜索功能 - 使用开放平台API
+    1. 热榜数据 - 使用知乎开放平台热榜API
+    2. 话题数据 - 使用话题API
     
     当真实API不可用时，自动降级到模拟数据
     """
@@ -208,44 +202,62 @@ class ZhihuAPIClient:
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Referer": "https://www.zhihu.com/",
-            "x-api-version": "3.0.91",
         })
     
     def _get_auth_headers(self) -> Dict:
-        """获取认证头"""
+        """获取认证头（符合知乎开放平台API规范）"""
         return {
             "Authorization": f"Bearer {self.api_key}",
-            "X-Token": self.api_key,
+            "X-Request-Timestamp": str(int(time.time())),
+            "Content-Type": "application/json",
         }
     
     def _check_api_availability(self) -> bool:
-        """检查API是否可用"""
+        """检查API是否可用（使用热榜API检测）"""
         if self._api_status is not None:
             return self._api_status
         
         try:
-            # 尝试调用知乎开放平台API
+            # 使用热榜API做检测（Limit=1即可）
             headers = self._get_auth_headers()
             response = self.session.get(
-                f"{ZHIHU_API_BASE}/people/me",
+                ZHIHU_DEVELOPER_API,
                 headers=headers,
+                params={"Limit": 1},  # 注意：大写L
                 timeout=10
             )
             
-            # 如果返回200或401(需要登录)都说明API Key有效
-            if response.status_code in [200, 401]:
-                self._api_status = True
-                print(f"✅ 知乎API Key验证成功: {self.api_key[:10]}...")
-                return True
+            if response.status_code == 200:
+                data = response.json()
+                # 检查返回的Code是否为0（成功）
+                code = data.get("Code", -1)
+                if code == 0:
+                    self._api_status = True
+                    print(f"✅ 知乎API验证成功: {self.api_key[:10]}...")
+                    return True
+                else:
+                    self._api_status = False
+                    self._print_api_error(code, data.get("Message", "未知错误"))
+                    return False
             else:
                 self._api_status = False
-                print(f"⚠️ 知乎API返回: {response.status_code}")
+                print(f"⚠️ 知乎API返回HTTP: {response.status_code}")
                 return False
                 
         except Exception as e:
             self._api_status = False
             print(f"❌ 知乎API不可用: {e}")
             return False
+    
+    def _print_api_error(self, code: int, message: str):
+        """打印API错误信息"""
+        error_messages = {
+            20001: "鉴权失败，请检查API Key是否正确",
+            30001: "频率限制，请稍后重试",
+            90001: "知乎内部错误，请稍后重试",
+        }
+        msg = error_messages.get(code, message)
+        print(f"⚠️ 知乎API错误 [{code}]: {msg}")
     
     def get_hot_list(self, limit: int = 10) -> List[Dict]:
         """
@@ -265,35 +277,28 @@ class ZhihuAPIClient:
             
             hot_list = []
             
-            # 方案1: 尝试知乎开放平台API
+            # 使用知乎开放平台热榜API
             if self._check_api_availability():
                 try:
                     headers = self._get_auth_headers()
                     response = self.session.get(
-                        f"{ZHIHU_HOT_API}/total",
+                        ZHIHU_DEVELOPER_API,
                         headers=headers,
-                        params={"limit": limit},
+                        params={"Limit": limit},  # 注意：大写L
                         timeout=15
                     )
+                    
                     if response.status_code == 200:
                         data = response.json()
-                        hot_list = self._parse_hot_list_response(data, limit)
+                        code = data.get("Code", -1)
+                        if code == 0:
+                            hot_list = self._parse_developer_hot_response(data, limit)
+                        else:
+                            self._print_api_error(code, data.get("Message", "未知错误"))
+                    else:
+                        print(f"⚠️ 知乎热榜API返回HTTP: {response.status_code}")
                 except Exception as e:
-                    print(f"⚠️ 知乎开放平台热榜API失败: {e}")
-            
-            # 方案2: 使用公开热榜API
-            if not hot_list:
-                try:
-                    response = self.session.get(
-                        ZHIHU_PUBLIC_HOT,
-                        params={"limit": limit, "desktop": True},
-                        timeout=15
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        hot_list = self._parse_public_hot_response(data, limit)
-                except Exception as e:
-                    print(f"⚠️ 知乎公开热榜API失败: {e}")
+                    print(f"⚠️ 知乎热榜API调用失败: {e}")
             
             # 确保返回列表（降级到模拟数据）
             if not isinstance(hot_list, list) or not hot_list:
@@ -307,49 +312,54 @@ class ZhihuAPIClient:
             # 永远返回mock数据，不让应用崩溃
             return self._generate_mock_hot_list(limit)
     
-    def _parse_hot_list_response(self, data: Dict, limit: int) -> List[Dict]:
-        """解析知乎开放平台热榜响应"""
+    def _parse_developer_hot_response(self, data: Dict, limit: int) -> List[Dict]:
+        """
+        解析知乎开放平台热榜响应
+        
+        响应格式：
+        {
+            "Code": 0,
+            "Message": "success",
+            "Data": {
+                "Total": 2,
+                "Items": [
+                    {
+                        "Title": "问题标题",
+                        "Url": "https://www.zhihu.com/question/123456789",
+                        "ThumbnailUrl": "https://...",
+                        "Summary": "摘要内容"
+                    }
+                ]
+            }
+        }
+        """
         hot_list = []
         try:
-            items = data.get("data", []) or data.get("results", [])
+            items = data.get("Data", {}).get("Items", [])
             for i, item in enumerate(items[:limit], 1):
-                target = item.get("target", item)
-                title = target.get("title", "")
-                
                 hot_list.append({
                     "rank": i,
-                    "title": title,
-                    "url": f"https://www.zhihu.com/question/{target.get('id', '')}",
-                    "id": str(target.get("id", "")),
-                    "hot_value": item.get("detail_text", ""),
-                    "excerpt": target.get("excerpt", ""),
-                    "answer_count": target.get("answer_count", 0),
+                    "title": item.get("Title", ""),
+                    "url": item.get("Url", ""),
+                    "id": self._extract_question_id(item.get("Url", "")),
+                    "hot_value": "",  # 该API没有热度值字段
+                    "excerpt": item.get("Summary", ""),
+                    "answer_count": 0,  # 该API没有回答数字段
+                    "thumbnail": item.get("ThumbnailUrl", ""),
                 })
         except Exception as e:
             print(f"解析热榜响应失败: {e}")
         return hot_list
     
-    def _parse_public_hot_response(self, data: Dict, limit: int) -> List[Dict]:
-        """解析知乎公开热榜响应"""
-        hot_list = []
-        try:
-            for i, item in enumerate(data.get("data", [])[:limit], 1):
-                target = item.get("target", {})
-                title = target.get("title", "") or target.get("title_area", {}).get("text", "")
-                question_id = target.get("id", "")
-                
-                hot_list.append({
-                    "rank": i,
-                    "title": title,
-                    "url": f"https://www.zhihu.com/question/{question_id}",
-                    "id": str(question_id),
-                    "hot_value": item.get("detail_text", ""),
-                    "excerpt": target.get("excerpt", ""),
-                    "answer_count": target.get("answer_count", 0),
-                })
-        except Exception as e:
-            print(f"解析公开热榜响应失败: {e}")
-        return hot_list
+    def _extract_question_id(self, url: str) -> str:
+        """从知乎URL中提取问题ID"""
+        if not url:
+            return ""
+        # URL格式: https://www.zhihu.com/question/123456789
+        match = re.search(r'/question/(\d+)', url)
+        if match:
+            return match.group(1)
+        return ""
     
     def _generate_mock_hot_list(self, limit: int = 10) -> List[Dict]:
         """生成模拟热榜（当真实API不可用时）"""
@@ -373,7 +383,7 @@ class ZhihuAPIClient:
                 "title": mock_titles[i % len(mock_titles)],
                 "url": f"https://www.zhihu.com/question/{10000000 + i}",
                 "id": str(10000000 + i),
-                "hot_value": "",  # mock数据没有热度值
+                "hot_value": "",
                 "excerpt": "相关讨论正在进行中...",
                 "answer_count": random.randint(100, 2000),
             }
@@ -413,64 +423,10 @@ class ZhihuAPIClient:
     
     def _fetch_topic_from_api(self, topic: str) -> Optional[Dict]:
         """从知乎API获取话题数据"""
-        try:
-            headers = self._get_auth_headers()
-            
-            # 搜索话题
-            response = self.session.get(
-                f"{ZHIHU_API_BASE}/search",
-                headers=headers,
-                params={"q": topic, "type": "topic", "limit": 5},
-                timeout=15
-            )
-            
-            if response.status_code != 200:
-                return None
-            
-            data = response.json()
-            
-            # 解析搜索结果
-            topics = data.get("data", [])
-            if not topics:
-                return None
-            
-            # 使用第一个匹配的话题
-            first_topic = topics[0]
-            topic_id = first_topic.get("id") or first_topic.get("topic", {}).get("id")
-            
-            if not topic_id:
-                return None
-            
-            # 获取话题详情
-            detail_response = self.session.get(
-                f"{ZHIHU_API_BASE}/topics/{topic_id}",
-                headers=headers,
-                timeout=15
-            )
-            
-            if detail_response.status_code != 200:
-                return None
-            
-            detail = detail_response.json()
-            
-            return {
-                "topic": {
-                    "id": topic_id,
-                    "name": detail.get("name", topic),
-                    "url": f"https://www.zhihu.com/topic/{topic_id}",
-                    "followers_count": detail.get("followers_count", 0),
-                    "questions_count": detail.get("questions_count", 0),
-                    "description": detail.get("introduction", ""),
-                    "related_topics": [],
-                },
-                "questions": [],
-                "fetch_time": datetime.now().isoformat(),
-                "source": "zhihu_api",
-            }
-            
-        except Exception as e:
-            print(f"从API获取话题失败: {e}")
-            return None
+        # 注意：当前API Key可能没有话题搜索权限，这里作为预留方法
+        # 如果需要完整的话题功能，可能需要申请额外的API权限
+        print(f"⚠️ 话题API需要额外权限，当前使用模拟数据")
+        return None
     
     def format_for_ai(self, topic_a: str, topic_b: str) -> str:
         """格式化两个话题的上下文，供AI生成脚本使用"""
@@ -537,7 +493,8 @@ if __name__ == "__main__":
     hot_list = client.get_hot_list(limit=5)
     print(f"获取到 {len(hot_list)} 条热榜")
     for item in hot_list[:3]:
-        print(f"  {item['rank']}. {item['title'][:30]}...")
+        print(f"  {item['rank']}. {item['title'][:40]}...")
+        print(f"     URL: {item['url']}")
     
     # 测试话题
     print("\n📝 测试获取话题上下文...")
