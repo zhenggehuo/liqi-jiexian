@@ -288,8 +288,9 @@ def handle_oauth_callback(st) -> bool:
         是否成功处理了OAuth回调
     """
     # 检查URL中是否有code参数
+    # 注意：知乎回调参数名是 authorization_code 而非标准的 code
     query_params = st.query_params
-    code = query_params.get("code")
+    code = query_params.get("authorization_code") or query_params.get("code")
     state = query_params.get("state")
     error = query_params.get("error")
     
