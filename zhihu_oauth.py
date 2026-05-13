@@ -11,8 +11,9 @@ OAuth流程：
 """
 
 import os
+import secrets
 import requests
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from urllib.parse import urlencode
 
 # ============================================================================
@@ -64,26 +65,25 @@ class ZhihuOAuth:
         self.app_key = app_key or ZHIHU_APP_KEY
         self.redirect_uri = redirect_uri or ZHIHU_REDIRECT_URI
     
-    def generate_auth_url(self, state: str = None) -> str:
+    def generate_auth_url(self) -> Tuple[str, str]:
         """
-        生成知乎授权URL
+        生成知乎授权URL（自动生成state）
         
-        Args:
-            state: 随机状态字符串，用于CSRF防护
-            
         Returns:
-            授权页面URL
+            Tuple[str, str]: (授权页面URL, 随机state)
         """
+        # 生成随机state用于CSRF防护
+        state = secrets.token_urlsafe(32)
+        
         params = {
             "redirect_uri": self.redirect_uri,
             "app_id": self.app_id,
             "response_type": "code",
+            "state": state,
         }
-        if state:
-            params["state"] = state
         
         auth_url = f"{ZHIHU_OAUTH_BASE_URL}/authorize?{urlencode(params)}"
-        return auth_url
+        return auth_url, state
     
     def exchange_token(self, code: str) -> Dict[str, Any]:
         """
@@ -245,13 +245,31 @@ def init_oauth_session_state(st):
         st.session_state.zhihu_access_token = None
     if "zhihu_login_error" not in st.session_state:
         st.session_state.zhihu_login_error = None
+    if "zhihu_oauth_state" not in st.session_state:
+        st.session_state.zhihu_oauth_state = None
+
+
+def prepare_oauth_login(st) -> str:
+    """
+    准备OAuth登录：生成授权URL并保存state
+    
+    Args:
+        st: Streamlit的st对象
+        
+    Returns:
+        授权页面URL
+    """
+    oauth = ZhihuOAuth()
+    auth_url, state = oauth.generate_auth_url()
+    st.session_state.zhihu_oauth_state = state
+    return auth_url
 
 
 def handle_oauth_callback(st) -> bool:
     """
     处理OAuth回调
     
-    检查URL中的code参数，如果有则尝试换取token并获取用户信息
+    检查URL中的code和state参数，验证state后换取token并获取用户信息
     
     Args:
         st: Streamlit的st对象
@@ -262,6 +280,7 @@ def handle_oauth_callback(st) -> bool:
     # 检查URL中是否有code参数
     query_params = st.query_params
     code = query_params.get("code")
+    state = query_params.get("state")
     error = query_params.get("error")
     
     if error:
@@ -272,6 +291,17 @@ def handle_oauth_callback(st) -> bool:
     
     if not code:
         return False
+    
+    # 验证state防止CSRF攻击
+    saved_state = st.session_state.get("zhihu_oauth_state")
+    if not saved_state or state != saved_state:
+        st.session_state.zhihu_login_error = "State验证失败，请重试"
+        st.query_params.clear()
+        st.session_state.zhihu_oauth_state = None
+        return False
+    
+    # State验证通过，清除已保存的state
+    st.session_state.zhihu_oauth_state = None
     
     # 清除URL中的code参数（防止刷新重复提交）
     st.query_params.clear()
@@ -308,3 +338,4 @@ def logout(st):
     st.session_state.zhihu_user = None
     st.session_state.zhihu_access_token = None
     st.session_state.zhihu_login_error = None
+    st.session_state.zhihu_oauth_state = None

@@ -22,7 +22,7 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from zhihu_api import ZhihuAPIClient, ZhihuContentSimulator, get_cache_stats, clear_cache
-from zhihu_oauth import ZhihuOAuth, init_oauth_session_state, handle_oauth_callback, logout
+from zhihu_oauth import ZhihuOAuth, init_oauth_session_state, handle_oauth_callback, prepare_oauth_login, logout
 
 # =============================================================================
 # 配置
@@ -713,9 +713,8 @@ def main():
                 logout(st)
                 st.rerun()
         else:
-            # 未登录状态
-            oauth = ZhihuOAuth()
-            auth_url = oauth.generate_auth_url()
+            # 未登录状态 - 使用prepare_oauth_login生成带state的URL
+            auth_url = prepare_oauth_login(st)
             
             st.markdown(f"""
             <div class="zhihu-login-section">
