@@ -22,6 +22,7 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from zhihu_api import ZhihuAPIClient, ZhihuContentSimulator, get_cache_stats, clear_cache
+from zhihu_oauth import ZhihuOAuth, init_oauth_session_state, handle_oauth_callback, logout
 
 # =============================================================================
 # 配置
@@ -643,9 +644,97 @@ def main():
     """, unsafe_allow_html=True)
     
     # ==========================================================================
+    # 初始化OAuth会话状态
+    # ==========================================================================
+    init_oauth_session_state(st)
+    
+    # 处理OAuth回调
+    oauth_success = handle_oauth_callback(st)
+    
+    # ==========================================================================
     # 侧边栏
     # ==========================================================================
     with st.sidebar:
+        # 知乎登录区域
+        st.markdown("""
+        <style>
+        .zhihu-login-section {
+            background: linear-gradient(135deg, #0066FF 0%, #0052CC 100%);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .zhihu-login-title {
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .zhihu-user-info {
+            background: #f0f7ff;
+            border-radius: 10px;
+            padding: 0.8rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .zhihu-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid #0066FF;
+            object-fit: cover;
+        }
+        .zhihu-user-name {
+            color: #333;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # 登录状态显示
+        if st.session_state.zhihu_user:
+            # 已登录状态
+            user = st.session_state.zhihu_user
+            avatar_url = user.get("avatar_url", "")
+            name = user.get("fullname", "知乎用户")
+            
+            st.markdown('<div class="zhihu-user-info">', unsafe_allow_html=True)
+            if avatar_url:
+                st.markdown(f'<img src="{avatar_url}" class="zhihu-avatar" />', unsafe_allow_html=True)
+            else:
+                st.markdown('👤', unsafe_allow_html=True)
+            st.markdown(f'<div class="zhihu-user-name">✅ {name}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            if st.button("🚪 退出登录", use_container_width=True):
+                logout(st)
+                st.rerun()
+        else:
+            # 未登录状态
+            oauth = ZhihuOAuth()
+            auth_url = oauth.generate_auth_url()
+            
+            st.markdown(f"""
+            <div class="zhihu-login-section">
+                <div class="zhihu-login-title">🔗 知乎账号登录</div>
+                <div style="color: rgba(255,255,255,0.9); font-size: 0.75rem; margin-top: 0.3rem;">
+                    登录后可参与人气奖评选
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f'<a href="{auth_url}" target="_self"><button style="width: 100%; background: #0066FF; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer;">🔗 知乎登录</button></a>', unsafe_allow_html=True)
+            
+            # 显示登录错误信息
+            if st.session_state.zhihu_login_error:
+                st.error(st.session_state.zhihu_login_error)
+        
+        st.markdown("---")
+        
+        # 原有内容
         st.markdown('<p class="demo-badge">🎯 路演防翻车专用</p>', unsafe_allow_html=True)
         st.markdown('<p class="sidebar-title">⚡ 预置精品案例</p>', unsafe_allow_html=True)
         st.caption("👆 点击直接查看，无需等待AI生成")
@@ -680,6 +769,11 @@ def main():
     # ==========================================================================
     st.markdown('<h1 class="main-title">🔗 离谱接线员</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">发现两个话题之间的隐藏联系，用"离谱小国"风格讲知识故事</p>', unsafe_allow_html=True)
+    
+    # 登录成功提示
+    if oauth_success and st.session_state.zhihu_user:
+        user_name = st.session_state.zhihu_user.get("fullname", "知乎用户")
+        st.success(f"🎉 欢迎回来，{user_name}！您已成功登录知乎账号，可参与人气奖评选")
     
     if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "你的API密钥":
         st.warning("🔑 请在 `.env` 文件中配置 DeepSeek API Key，否则将使用演示模式")
@@ -979,8 +1073,18 @@ def main():
     # 底部
     # ==========================================================================
     st.markdown("---")
+    
+    # 登录状态徽章
+    if st.session_state.zhihu_user:
+        login_badge = f'<span style="background: #e8f5e9; color: #2e7d32; padding: 0.3rem 0.8rem; border-radius: 15px; font-size: 0.8rem; margin-right: 0.5rem;">✅ {st.session_state.zhihu_user.get("fullname", "知乎用户")} 已登录</span>'
+        login_text = "感谢登录！您的使用数据将参与人气奖评选"
+    else:
+        login_badge = '<span style="background: #fff3e0; color: #e65100; padding: 0.3rem 0.8rem; border-radius: 15px; font-size: 0.8rem; margin-right: 0.5rem;">👤 未登录</span>'
+        login_text = "登录知乎账号可参与人气奖评选"
+    
     st.markdown(f"""
     <div class="footer">
+        <p style="margin-bottom: 0.5rem;">{login_badge}<span style="color: #888; font-size: 0.8rem;">{login_text}</span></p>
         <p>🔗 离谱接线员 | 知乎 Hackathon 2026「灵感引擎」赛道</p>
         <p>Powered by DeepSeek API + 知乎热榜API | 5月16日路演</p>
     </div>
