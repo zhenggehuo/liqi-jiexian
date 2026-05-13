@@ -656,11 +656,17 @@ def main():
         st.sidebar.json(_debug_params)
     
     # 处理OAuth回调
+    _code_before = _debug_params.get("code")
     oauth_success = handle_oauth_callback(st)
     
-    # 调试：显示登录错误
-    if st.session_state.get("zhihu_login_error"):
-        st.sidebar.error(f"OAuth错误: {st.session_state.zhihu_login_error}")
+    # 调试：显示登录结果
+    if _code_before:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🔍 登录调试")
+        st.sidebar.write(f"code已收到: `{_code_before[:10]}...`")
+        st.sidebar.write(f"OAuth成功: `{oauth_success}`")
+        st.sidebar.write(f"登录错误: `{st.session_state.get('zhihu_login_error', '无')}`")
+        st.sidebar.write(f"用户信息: `{st.session_state.get('zhihu_user', '无')}`")
     
     # ==========================================================================
     # 侧边栏
