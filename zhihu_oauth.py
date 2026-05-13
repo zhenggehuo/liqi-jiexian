@@ -22,9 +22,9 @@ from urllib.parse import urlencode
 # 知乎OAuth2.0配置
 ZHIHU_OAUTH_BASE_URL = "https://openapi.zhihu.com"
 
-# 用户提供的Key（先用这个值同时作为app_id和app_key测试）
-ZHIHU_APP_ID = os.getenv("ZHIHU_APP_ID", "6gB7oguakanBSRXLT9alTXSlfkziabXs")
-ZHIHU_APP_KEY = os.getenv("ZHIHU_APP_KEY", "6gB7oguakanBSRXLT9alTXSlfkziabXs")
+# 知乎OAuth应用凭证（黑客松项目专用）
+ZHIHU_APP_ID = os.getenv("ZHIHU_APP_ID", "284")
+ZHIHU_APP_KEY = os.getenv("ZHIHU_APP_KEY", "e358ea83f1474bbdbc6ed63269e79424")
 
 # 回调地址（Streamlit公网地址）
 ZHIHU_REDIRECT_URI = os.getenv(
